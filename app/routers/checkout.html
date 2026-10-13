@@ -1,0 +1,184 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StyleHub - Test Payment</title>
+
+    <script src="https://js.stripe.com/v3/"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 450px;
+            margin: 60px auto;
+            padding: 20px;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        #card-element {
+            padding: 12px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+
+        button {
+            width: 100%;
+            padding: 12px;
+            background: #635bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        #message {
+            margin-top: 15px;
+            overflow-wrap: anywhere;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>StyleHub Checkout</h1>
+
+    <p>Order ID: 1</p>
+    <p>Amount: ₹14,999.94</p>
+
+    <form id="payment-form">
+        <label>Card details</label>
+        <div id="card-element"></div>
+
+        <button id="pay-button" type="submit" disabled>
+            Loading payment...
+        </button>
+
+        <p id="message" role="status"></p>
+    </form>
+
+    <script>
+        // Replace with your Stripe TEST publishable key.
+        const stripe = Stripe("pk_test_51UNBLTGgpVRvoIFBIjuPvukmZEzgN6PbhJY4SuzQpPZGBQqSg13jAMaQsFEoS3537YNGkUYGBJkzBgqViVt2PHEy00sUHzMM2n");
+
+        const orderId = 1;
+
+        const elements = stripe.elements();
+        const card = elements.create("card", {
+            hidePostalCode: true
+        });
+
+        card.mount("#card-element");
+
+        const form = document.getElementById("payment-form");
+        const button = document.getElementById("pay-button");
+        const message = document.getElementById("message");
+
+        let clientSecret = null;
+
+        async function initializePayment() {
+            const token = prompt(
+                "Enter your StyleHub access token from the Swagger login response:"
+            );
+
+            if (!token) {
+                message.textContent =
+                    "Login token required. Refresh the page to try again.";
+                return;
+            }
+
+            try {
+                message.textContent = "Preparing your test payment...";
+
+                const response = await fetch(
+                    `/payments/${orderId}`,
+                    {
+                        method: "POST",
+                        headers: {
+                            "Authorization": `Bearer ${token}`
+                        }
+                    }
+                );
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        data.detail || "Unable to prepare payment."
+                    );
+                }
+
+                clientSecret = data.client_secret;
+
+                if (!clientSecret) {
+                    throw new Error("The backend did not return a client secret.");
+                }
+
+                message.textContent =
+                    "Payment is ready. Enter your Stripe test card details.";
+                button.textContent = "Pay Now";
+                button.disabled = false;
+
+            } catch (error) {
+                message.textContent = error.message;
+                button.disabled = true;
+            }
+        }
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+
+            if (!clientSecret) {
+                message.textContent = "Payment has not been initialized.";
+                return;
+            }
+
+            button.disabled = true;
+            message.textContent = "Processing test payment...";
+
+            try {
+                const result = await stripe.confirmCardPayment(
+                    clientSecret,
+                    {
+                        payment_method: {
+                            card: card
+                        }
+                    }
+                );
+
+                if (result.error) {
+                    message.textContent = result.error.message;
+                    button.disabled = false;
+                    return;
+                }
+
+                if (result.paymentIntent.status === "succeeded") {
+                    message.textContent =
+                        "Test payment successful! Waiting for order confirmation.";
+                    button.textContent = "Payment Completed";
+                } else {
+                    message.textContent =
+                        "Payment status: " + result.paymentIntent.status;
+                    button.disabled = false;
+                }
+
+            } catch (error) {
+                message.textContent = "Payment error: " + error.message;
+                button.disabled = false;
+            }
+        });
+
+        initializePayment();
+    </script>
+</body>
+</html>
+```
